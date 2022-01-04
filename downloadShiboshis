@@ -1,0 +1,10 @@
+#!/bin/bash
+echo [> shiboshis.json
+for ((i=0;i<=9998;i++));\
+  do curl https://ipfs.io/ipfs/QmU1pJe9VEXewMJy5vYKqcEB3hmqBk3eQsbcs3TJvWZvsT/$i >> shiboshis.json;\
+  echo ,>> shiboshis.json;\
+  echo shiboshi $i downloaded;\
+done; >> shiboshis.json
+curl https://ipfs.io/ipfs/QmU1pJe9VEXewMJy5vYKqcEB3hmqBk3eQsbcs3TJvWZvsT/$i >> shiboshis.json;\
+echo >> shiboshis.json
+echo ]>> shiboshis.json
