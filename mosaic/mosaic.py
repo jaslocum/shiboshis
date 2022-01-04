@@ -1,5 +1,6 @@
 import sys
 import os
+import random
 from PIL import Image, ImageOps
 from multiprocessing import Process, Queue, cpu_count
 
@@ -111,18 +112,19 @@ class TileFitter:
         tile_index = 0
         len_tiles_data = len(self.tiles_data)
         # skip set of tiles examined to provide even error to matching of tiles
-        cube_root = int(round(len_tiles_data**(1/3)))
-        inc_index_by = cube_root + 1
+        max_tries = 1000
+        trys = 1
         # go through each tile in turn looking for the best match for the part of the image represented by 'img_data'
         # if we are at the end of remaining tiles, the return best fit so far
-        while tile_index < len_tiles_data:
+        while trys < max_tries:
+            tile_index = random.randint(0, 9999)
             tile_data = self.tiles_data[tile_index]
             if self.tiles_used[tile_index] != 0:
                 diff = self.__get_tile_diff(img_data, tile_data, min_diff)
                 if diff < min_diff:
                     min_diff = diff
                     best_fit_tile_index = tile_index
-            tile_index += inc_index_by
+            trys += 1
         if best_fit_tile_index == None:
             tile_index = 0
             while tile_index < len_tiles_data:
@@ -259,6 +261,6 @@ def mosaic(img_path, tiles_path):
 if __name__ == '__main__':
     if len(sys.argv) < 3:
         print('Usage: {} <image> <tiles directory>\r'.format(sys.argv[0]))
+        mosaic('./shibaswap-icon.ee749b42(400x400).png', './imagesCopy/')
     else:
         mosaic(sys.argv[1], sys.argv[2])
-    # mosaic('./shibaswap-icon.ee749b42(400x400).png', './images/')
