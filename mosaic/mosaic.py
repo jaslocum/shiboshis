@@ -205,7 +205,7 @@ def build_mosaic(result_queue, original_img_large, tiles_data):
 
 
 def compose(original_img, tiles):
-    print('compose:s press Ctrl-C to abort...')
+    print('compose: press Ctrl-C to abort...')
     global tiles_used
     original_img_large, original_img_small = original_img
     tiles_large, tiles_small = tiles
