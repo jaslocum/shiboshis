@@ -1,8 +1,9 @@
 import sys
 import os
 import random
+from multiprocessing import Process, Queue, Manager, freeze_support, cpu_count
 from PIL import Image, ImageOps
-from multiprocessing import Process, Queue, cpu_count
+manager = Manager()
 
 # Change these 3 config parameters to suit your needs...
 TILE_SIZE = 128  # height/width of mosaic tiles in pixels
@@ -10,14 +11,15 @@ TILE_SIZE = 128  # height/width of mosaic tiles in pixels
 TILE_MATCH_RES = 5
 # the mosaic image will be this many times wider and taller than the original
 ENLARGEMENT = 16
+# percentage of all potential tiles to sample per each get_best_fit_tile attempt
+TILE_SAMPLE_PERCENT = .1
 
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
-# WORKER_COUNT = max(cpu_count() - 1, 1)
-WORKER_COUNT = 1
+WORKER_COUNT = max(cpu_count() - 1, 1)
+# WORKER_COUNT = 1
 OUT_FILE = 'mosaic.jpeg'
 EOQ_VALUE = None
-tiles_used = []
-
+TILES_USED = manager.list()
 
 class TileProcessor:
     def __init__(self, tiles_directory):
@@ -91,9 +93,8 @@ class TargetImage:
 
 
 class TileFitter:
-    def __init__(self, tiles_data, tiles_used):
+    def __init__(self, tiles_data):
         self.tiles_data = tiles_data
-        self.tiles_used = tiles_used
 
     def __get_tile_diff(self, t1, t2, bail_out_value):
         diff = 0
@@ -110,40 +111,54 @@ class TileFitter:
         best_fit_tile_index = None
         min_diff = sys.maxsize
         tile_index = 0
+        max_tries = 1
         len_tiles_data = len(self.tiles_data)
+        if len_tiles_data > TILE_SAMPLE_PERCENT:
+            max_tries = round(len_tiles_data*TILE_SAMPLE_PERCENT)
         # skip set of tiles examined to provide even error to matching of tiles
-        max_tries = 1000
         trys = 1
         # go through each tile in turn looking for the best match for the part of the image represented by 'img_data'
         # if we are at the end of remaining tiles, the return best fit so far
         while trys < max_tries:
-            tile_index = random.randint(0, 9999)
+            tile_index = random.randint(0, len_tiles_data - 1)
             tile_data = self.tiles_data[tile_index]
-            if self.tiles_used[tile_index] != 0:
+            if TILES_USED[tile_index] != 0:
+                # lock tile from being used by other theads
+                TILES_USED[tile_index] = 0
                 diff = self.__get_tile_diff(img_data, tile_data, min_diff)
                 if diff < min_diff:
+                    # unlock tile that was a contender to be used by other threads while searching for best fits
+                    if best_fit_tile_index != None: TILES_USED[best_fit_tile_index] = 1
                     min_diff = diff
                     best_fit_tile_index = tile_index
+                else:
+                    # unlock tile to be used by other threads while searching for best fits
+                    TILES_USED[tile_index] = 1
             trys += 1
         if best_fit_tile_index == None:
             tile_index = 0
             while tile_index < len_tiles_data:
                 tile_data = self.tiles_data[tile_index]
-                if self.tiles_used[tile_index] != 0:
-                    diff = self.__get_tile_diff(
-                        img_data, tile_data, min_diff)
+                if TILES_USED[tile_index] != 0:
+                    # lock tile from being used by other theads
+                    TILES_USED[tile_index] = 0
+                    diff = self.__get_tile_diff(img_data, tile_data, min_diff)
                     if diff < min_diff:
+                        # unlock tile that was a contender to be used by other threads while searching for best fits
+                        if best_fit_tile_index != None: TILES_USED[best_fit_tile_index] = 1
                         min_diff = diff
                         best_fit_tile_index = tile_index
+                    else:
+                        # unlock tile to be used by other threads while searching for best fits
+                        TILES_USED[tile_index] = 1
                 tile_index += 1
-        if best_fit_tile_index != None:
-            self.tiles_used[best_fit_tile_index] = 0
         return best_fit_tile_index
 
 
-def fit_tiles(work_queue, result_queue, tiles_data, tiles_used):
+def fit_tiles(work_queue, result_queue, tiles_data):
     # this function gets run by the worker processes, one on each CPU core
-    tile_fitter = TileFitter(tiles_data, tiles_used)
+    tile_fitter = TileFitter(tiles_data)
+    tiles_used_test = TILES_USED
     while True:
         try:
             img_data, img_coords = work_queue.get(True)
@@ -208,14 +223,14 @@ def build_mosaic(result_queue, original_img_large, tiles_data):
 
 def compose(original_img, tiles):
     print('compose: press Ctrl-C to abort...')
-    global tiles_used
     original_img_large, original_img_small = original_img
     tiles_large, tiles_small = tiles
+    fit_process = []
 
     mosaic = MosaicImage(original_img_large)
 
     tiles_data = [list(tile.getdata()) for tile in tiles_large]
-    tiles_used = [1 for tile in tiles_large]
+    TILES_USED = [1 for tile in tiles_large]
     all_tile_data_small = [list(tile.getdata()) for tile in tiles_small]
 
     work_queue = Queue(WORKER_COUNT)
@@ -223,13 +238,13 @@ def compose(original_img, tiles):
 
     try:
         # start the worker processes that will build the mosaic image
-        Process(target=build_mosaic, args=(
-            result_queue, original_img_large, tiles_data)).start()
+        build_process = Process(target=build_mosaic, args=(result_queue, original_img_large, tiles_data))
+        build_process.start()
 
         # start the worker processes that will perform the tile fitting
         for n in range(WORKER_COUNT):
-            Process(target=fit_tiles, args=(
-                work_queue, result_queue, tiles_data, tiles_used)).start()
+            fit_process.append(Process(target=fit_tiles, args=(work_queue, result_queue, tiles_data)))
+            fit_process[n].start()
 
         progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count)
         for x in range(mosaic.x_tile_count):
