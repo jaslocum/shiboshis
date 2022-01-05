@@ -246,6 +246,11 @@ def compose(original_img, tiles):
             fit_process.append(Process(target=fit_tiles, args=(work_queue, result_queue, tiles_data)))
             fit_process[n].start()
 
+        # join processes    
+        build_process.join()
+        for n in range(WORKER_COUNT):
+            fit_process[n].join()
+
         progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count)
         for x in range(mosaic.x_tile_count):
             for y in range(mosaic.y_tile_count):
