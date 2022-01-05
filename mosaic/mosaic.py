@@ -1,9 +1,9 @@
 import sys
 import os
 import random
-from multiprocessing import Process, Queue, Manager, freeze_support, cpu_count
+import multiprocessing
+from multiprocessing import Process, Queue, cpu_count
 from PIL import Image, ImageOps
-manager = Manager()
 
 # Change these 3 config parameters to suit your needs...
 TILE_SIZE = 128  # height/width of mosaic tiles in pixels
@@ -19,7 +19,7 @@ WORKER_COUNT = max(cpu_count() - 1, 1)
 # WORKER_COUNT = 1
 OUT_FILE = 'mosaic.jpeg'
 EOQ_VALUE = None
-TILES_USED = manager.list()
+TILES_USED = multiprocessing.Array("i", [0,1])
 
 class TileProcessor:
     def __init__(self, tiles_directory):
@@ -107,7 +107,7 @@ class TileFitter:
                 return diff
         return diff
 
-    def get_best_fit_tile(self, img_data):
+    def get_best_fit_tile(self, img_data, TILES_USED):
         best_fit_tile_index = None
         min_diff = sys.maxsize
         tile_index = 0
@@ -155,16 +155,16 @@ class TileFitter:
         return best_fit_tile_index
 
 
-def fit_tiles(work_queue, result_queue, tiles_data):
+def fit_tiles(work_queue, result_queue, tiles_data, TILES_USED):
     # this function gets run by the worker processes, one on each CPU core
     tile_fitter = TileFitter(tiles_data)
-    tiles_used_test = TILES_USED
+    TILES_USED_test = TILES_USED
     while True:
         try:
             img_data, img_coords = work_queue.get(True)
             if img_data == EOQ_VALUE:
                 break
-            tile_index = tile_fitter.get_best_fit_tile(img_data)
+            tile_index = tile_fitter.get_best_fit_tile(img_data, TILES_USED)
             if tile_index == None:
                 break
             result_queue.put((img_coords, tile_index))
@@ -239,17 +239,19 @@ def compose(original_img, tiles):
     try:
         # start the worker processes that will build the mosaic image
         build_process = Process(target=build_mosaic, args=(result_queue, original_img_large, tiles_data))
-        build_process.start()
 
         # start the worker processes that will perform the tile fitting
         for n in range(WORKER_COUNT):
-            fit_process.append(Process(target=fit_tiles, args=(work_queue, result_queue, tiles_data)))
+            fit_process.append(Process(target=fit_tiles, args=(work_queue, result_queue, tiles_data, TILES_USED)))
+
+        # start processes
+        build_process.start()
+        for n in range(WORKER_COUNT):
             fit_process[n].start()
 
-        # join processes    
-        build_process.join()
-        for n in range(WORKER_COUNT):
-            fit_process[n].join()
+        # join processes
+        # for n in range(WORKER_COUNT):
+        #    fit_process[n].join()
 
         progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count)
         for x in range(mosaic.x_tile_count):
