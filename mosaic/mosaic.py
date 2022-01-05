@@ -1,7 +1,7 @@
 from multiprocessing.spawn import freeze_support
 from PIL import Image, ImageOps
 Image.MAX_IMAGE_PIXELS = None
-from multiprocessing import Manager, Process, Queue, cpu_count
+from multiprocessing import Process, Queue, cpu_count
 import sys
 import os
 import random
@@ -9,11 +9,13 @@ import random
 # Change these 3 config parameters to suit your needs...
 TILE_SIZE = 128  # height/width of mosaic tiles in pixels
 # tile matching resolution (higher values give better fit but require more processing)
-TILE_MATCH_RES = 5
+TILE_MATCH_RES = 4
 # the mosaic image will be this many times wider and taller than the original
 ENLARGEMENT = 32
 # percentage of all potential tiles to sample per each get_best_fit_tile attempt
 TILE_SAMPLE_PERCENT = .01
+# surprise stop percentage chance
+SURPRISE_STOP = .10
 
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
 # WORKER_COUNT = max(cpu_count() - 1, 1)
@@ -133,6 +135,8 @@ class TileFitter:
         # if we are at the end of remaining tiles, the return best fit so far
         while trys < max_tries:
             tile_index = random.randint(0, len_tiles_data - 1)
+            if random.random() > SURPRISE_STOP:
+                trys = max_tries
             # lock tile if not already locked
             if self.__lock_tile(tile_index):
                 tile_data = self.tiles_data[tile_index]
