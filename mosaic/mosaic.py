@@ -238,47 +238,40 @@ def compose(original_img, tiles):
     tiles_large, tiles_small = tiles
     fit_process = []
 
-    with Manager() as manager:
-        mosaic = MosaicImage(original_img_large)
-        work_queue = Queue(WORKER_COUNT)
-        result_queue = Queue()
-        tiles_data = [list(tile.getdata()) for tile in tiles_large]
-        all_tile_data_small = [list(tile.getdata()) for tile in tiles_small]
-        TILES_USED = manager.list([1 for tile in tiles_large])
-        try:
-            # start the worker processes that will build the mosaic image
-            build_process = Process(target=build_mosaic, args=(
-                result_queue, original_img_large, tiles_data))
+    mosaic = MosaicImage(original_img_large)
+    work_queue = Queue(WORKER_COUNT)
+    result_queue = Queue()
+    tiles_data = [list(tile.getdata()) for tile in tiles_large]
+    all_tile_data_small = [list(tile.getdata()) for tile in tiles_small]
+    TILES_USED = list([1 for tile in tiles_large])
+    try:
+        # start the worker processes that will build the mosaic image
+        Process(target=build_mosaic, args=(
+            result_queue, original_img_large, tiles_data)).start()
 
-            # start the worker processes that will perform the tile fitting
-            for n in range(WORKER_COUNT):
-                fit_process.append(Process(target=fit_tiles, args=(
-                    work_queue, result_queue, tiles_data, TILES_USED)))
+        # start the worker processes that will perform the tile fitting
+        for n in range(WORKER_COUNT):
+            Process(target=fit_tiles, args=(work_queue, result_queue, tiles_data, TILES_USED)).start()
 
-            # start processes
-            build_process.start()
-            for n in range(WORKER_COUNT):
-                fit_process[n].start()
+        progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count)
+        for x in range(mosaic.x_tile_count):
+            for y in range(mosaic.y_tile_count):
+                large_box = (x * TILE_SIZE, y * TILE_SIZE, (x + 1)
+                            * TILE_SIZE, (y + 1) * TILE_SIZE)
+                small_box = (x * TILE_SIZE/TILE_BLOCK_SIZE, y * TILE_SIZE/TILE_BLOCK_SIZE,
+                            (x + 1) * TILE_SIZE/TILE_BLOCK_SIZE, (y + 1) * TILE_SIZE/TILE_BLOCK_SIZE)
+                work_queue.put(
+                    (list(original_img_small.crop(small_box).getdata()), large_box))
+                progress.update()
 
-            progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count)
-            for x in range(mosaic.x_tile_count):
-                for y in range(mosaic.y_tile_count):
-                    large_box = (x * TILE_SIZE, y * TILE_SIZE, (x + 1)
-                                * TILE_SIZE, (y + 1) * TILE_SIZE)
-                    small_box = (x * TILE_SIZE/TILE_BLOCK_SIZE, y * TILE_SIZE/TILE_BLOCK_SIZE,
-                                (x + 1) * TILE_SIZE/TILE_BLOCK_SIZE, (y + 1) * TILE_SIZE/TILE_BLOCK_SIZE)
-                    work_queue.put(
-                        (list(original_img_small.crop(small_box).getdata()), large_box))
-                    progress.update()
+    except KeyboardInterrupt:
+        print('\nHalting, please wait...')
+        pass
 
-        except KeyboardInterrupt:
-            print('\nHalting, please wait...')
-            pass
-
-        finally:
-            # put these special values onto the queue to let the workers know they can terminate
-            for n in range(WORKER_COUNT):
-                work_queue.put((EOQ_VALUE, EOQ_VALUE))
+    finally:
+        # put these special values onto the queue to let the workers know they can terminate
+        for n in range(WORKER_COUNT):
+            work_queue.put((EOQ_VALUE, EOQ_VALUE))
 
 
 def mosaic(img_path, tiles_path):
