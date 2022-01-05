@@ -10,13 +10,13 @@ TILE_SIZE = 128  # height/width of mosaic tiles in pixels
 # tile matching resolution (higher values give better fit but require more processing)
 TILE_MATCH_RES = 5
 # the mosaic image will be this many times wider and taller than the original
-ENLARGEMENT = 16
+ENLARGEMENT = 32
 # percentage of all potential tiles to sample per each get_best_fit_tile attempt
 TILE_SAMPLE_PERCENT = .1
 
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
-WORKER_COUNT = max(cpu_count() - 1, 1)
-# WORKER_COUNT = 1
+# WORKER_COUNT = max(cpu_count() - 1, 1)
+WORKER_COUNT = 1
 OUT_FILE = 'mosaic.jpeg'
 EOQ_VALUE = None
 
@@ -97,14 +97,12 @@ class TileFitter:
         self.tiles_data = tiles_data
         self.tiles_used = tiles_used
 
-    def __get_tile_not_locked(self, tile_index):
-        not_locked = True
-        if self.tiles_used[tile_index] == 0:
-            not_locked = False
-        return not_locked
-
     def __lock_tile(self, tile_index):
-        self.tiles_used[tile_index] = 0
+        locked_tile = False
+        if self.tiles_used[tile_index] == 1:
+            self.tiles_used[tile_index] = 0
+            locked_tile = True
+        return locked_tile
 
     def __unlock_tile(self, tile_index):
         self.tiles_used[tile_index] = 1
@@ -134,10 +132,9 @@ class TileFitter:
         # if we are at the end of remaining tiles, the return best fit so far
         while trys < max_tries:
             tile_index = random.randint(0, len_tiles_data - 1)
-            tile_data = self.tiles_data[tile_index]
-            if self.__get_tile_not_locked(tile_index):
-                # lock tile from being used by other theads
-                self.__lock_tile(tile_index)
+            # lock tile if not already locked
+            if self.__lock_tile(tile_index):
+                tile_data = self.tiles_data[tile_index]
                 diff = self.__get_tile_diff(img_data, tile_data, min_diff)
                 if diff < min_diff:
                     # unlock tile that was a contender to be used by other threads while searching for best fits
@@ -152,10 +149,9 @@ class TileFitter:
         if best_fit_tile_index == None:
             tile_index = 0
             while tile_index < len_tiles_data:
-                tile_data = self.tiles_data[tile_index]
-                if self.__get_tile_not_locked(tile_index):
-                    # lock tile from being used by other theads
-                    self.__lock_tile(tile_index)
+                # lock tile if not already locked
+                if self.__lock_tile(tile_index):
+                    tile_data = self.tiles_data[tile_index]
                     diff = self.__get_tile_diff(img_data, tile_data, min_diff)
                     if diff < min_diff:
                         # unlock tile that was a contender to be used by other threads while searching for best fits
@@ -179,9 +175,10 @@ def fit_tiles(work_queue, result_queue, tiles_data, tiles_used):
             if img_data == EOQ_VALUE:
                 break
             tile_index = tile_fitter.get_best_fit_tile(img_data)
-            if tile_index == None:
+            if tile_index != None:
+                result_queue.put((img_coords, tile_index))
+            else:
                 break
-            result_queue.put((img_coords, tile_index))
         except KeyboardInterrupt:
             pass
     # let the result handler know that this worker has finished everything
