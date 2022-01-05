@@ -280,11 +280,10 @@ def compose(original_img, tiles):
                 work_queue.put((EOQ_VALUE, EOQ_VALUE))
 
 
-def mosaic(img_path, tiles_path, output_file):
+def mosaic(img_path, tiles_path):
+    global OUT_FILE
     image_data = TargetImage(img_path).get_data()
     data_tiles = TileProcessor(tiles_path).get_tiles()
-    if output_file:
-        OUT_FILE = output_file
     compose(image_data, data_tiles)
 
 
@@ -293,6 +292,6 @@ if __name__ == '__main__':
     if len(sys.argv) < 3:
         print('Usage: {} <image> <tiles directory>\r'.format(sys.argv[0]))
         mosaic('./shibaswap-icon.ee749b42(400x400).png',
-               './imagesCopy/', OUT_FILE)
+               './imagesCopy/')
     else:
-        mosaic(sys.argv[1], sys.argv[2], sys.argv[3])
+        mosaic(sys.argv[1], sys.argv[2])
