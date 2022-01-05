@@ -135,7 +135,7 @@ class TileFitter:
         # if we are at the end of remaining tiles, the return best fit so far
         while trys < max_tries:
             tile_index = random.randint(0, len_tiles_data - 1)
-            if random.random() > SURPRISE_STOP:
+            if random.random() < SURPRISE_STOP:
                 trys = max_tries
             # lock tile if not already locked
             if self.__lock_tile(tile_index):
