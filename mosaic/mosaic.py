@@ -1,9 +1,9 @@
+from multiprocessing.spawn import freeze_support
+from PIL import Image, ImageOps
+from multiprocessing import Manager, Process, Queue, cpu_count
 import sys
 import os
 import random
-import multiprocessing
-from multiprocessing import Process, Queue, cpu_count
-from PIL import Image, ImageOps
 
 # Change these 3 config parameters to suit your needs...
 TILE_SIZE = 128  # height/width of mosaic tiles in pixels
@@ -19,7 +19,7 @@ WORKER_COUNT = max(cpu_count() - 1, 1)
 # WORKER_COUNT = 1
 OUT_FILE = 'mosaic.jpeg'
 EOQ_VALUE = None
-TILES_USED = multiprocessing.Array("i", [0,1])
+
 
 class TileProcessor:
     def __init__(self, tiles_directory):
@@ -93,8 +93,21 @@ class TargetImage:
 
 
 class TileFitter:
-    def __init__(self, tiles_data):
+    def __init__(self, tiles_data, tiles_used):
         self.tiles_data = tiles_data
+        self.tiles_used = tiles_used
+
+    def __get_tile_not_locked(self, tile_index):
+        not_locked = True
+        if self.tiles_used[tile_index] == 0:
+            not_locked = False
+        return not_locked
+
+    def __lock_tile(self, tile_index):
+        self.tiles_used[tile_index] = 0
+
+    def __unlock_tile(self, tile_index):
+        self.tiles_used[tile_index] = 1
 
     def __get_tile_diff(self, t1, t2, bail_out_value):
         diff = 0
@@ -107,7 +120,7 @@ class TileFitter:
                 return diff
         return diff
 
-    def get_best_fit_tile(self, img_data, TILES_USED):
+    def get_best_fit_tile(self, img_data):
         best_fit_tile_index = None
         min_diff = sys.maxsize
         tile_index = 0
@@ -122,49 +135,50 @@ class TileFitter:
         while trys < max_tries:
             tile_index = random.randint(0, len_tiles_data - 1)
             tile_data = self.tiles_data[tile_index]
-            if TILES_USED[tile_index] != 0:
+            if self.__get_tile_not_locked(tile_index):
                 # lock tile from being used by other theads
-                TILES_USED[tile_index] = 0
+                self.__lock_tile(tile_index)
                 diff = self.__get_tile_diff(img_data, tile_data, min_diff)
                 if diff < min_diff:
                     # unlock tile that was a contender to be used by other threads while searching for best fits
-                    if best_fit_tile_index != None: TILES_USED[best_fit_tile_index] = 1
+                    if best_fit_tile_index != None:
+                        self.__unlock_tile(best_fit_tile_index)
                     min_diff = diff
                     best_fit_tile_index = tile_index
                 else:
                     # unlock tile to be used by other threads while searching for best fits
-                    TILES_USED[tile_index] = 1
+                    self.__unlock_tile(tile_index)
             trys += 1
         if best_fit_tile_index == None:
             tile_index = 0
             while tile_index < len_tiles_data:
                 tile_data = self.tiles_data[tile_index]
-                if TILES_USED[tile_index] != 0:
+                if self.__get_tile_not_locked(tile_index):
                     # lock tile from being used by other theads
-                    TILES_USED[tile_index] = 0
+                    self.__lock_tile(tile_index)
                     diff = self.__get_tile_diff(img_data, tile_data, min_diff)
                     if diff < min_diff:
                         # unlock tile that was a contender to be used by other threads while searching for best fits
-                        if best_fit_tile_index != None: TILES_USED[best_fit_tile_index] = 1
+                        if best_fit_tile_index != None:
+                            self.__unlock_tile(best_fit_tile_index)
                         min_diff = diff
                         best_fit_tile_index = tile_index
                     else:
                         # unlock tile to be used by other threads while searching for best fits
-                        TILES_USED[tile_index] = 1
+                        self.__unlock_tile(tile_index)
                 tile_index += 1
         return best_fit_tile_index
 
 
-def fit_tiles(work_queue, result_queue, tiles_data, TILES_USED):
+def fit_tiles(work_queue, result_queue, tiles_data, tiles_used):
     # this function gets run by the worker processes, one on each CPU core
-    tile_fitter = TileFitter(tiles_data)
-    TILES_USED_test = TILES_USED
+    tile_fitter = TileFitter(tiles_data, tiles_used)
     while True:
         try:
             img_data, img_coords = work_queue.get(True)
             if img_data == EOQ_VALUE:
                 break
-            tile_index = tile_fitter.get_best_fit_tile(img_data, TILES_USED)
+            tile_index = tile_fitter.get_best_fit_tile(img_data)
             if tile_index == None:
                 break
             result_queue.put((img_coords, tile_index))
@@ -220,69 +234,68 @@ def build_mosaic(result_queue, original_img_large, tiles_data):
     mosaic.save(OUT_FILE)
     print('\nFinished, output is in', OUT_FILE)
 
-
 def compose(original_img, tiles):
     print('compose: press Ctrl-C to abort...')
     original_img_large, original_img_small = original_img
     tiles_large, tiles_small = tiles
     fit_process = []
 
-    mosaic = MosaicImage(original_img_large)
+    with Manager() as manager:
+        mosaic = MosaicImage(original_img_large)
+        work_queue = Queue(WORKER_COUNT)
+        result_queue = Queue()
+        tiles_data = [list(tile.getdata()) for tile in tiles_large]
+        all_tile_data_small = [list(tile.getdata()) for tile in tiles_small]
+        TILES_USED = manager.list([1 for tile in tiles_large])
+        try:
+            # start the worker processes that will build the mosaic image
+            build_process = Process(target=build_mosaic, args=(
+                result_queue, original_img_large, tiles_data))
 
-    tiles_data = [list(tile.getdata()) for tile in tiles_large]
-    TILES_USED = [1 for tile in tiles_large]
-    all_tile_data_small = [list(tile.getdata()) for tile in tiles_small]
+            # start the worker processes that will perform the tile fitting
+            for n in range(WORKER_COUNT):
+                fit_process.append(Process(target=fit_tiles, args=(
+                    work_queue, result_queue, tiles_data, TILES_USED)))
 
-    work_queue = Queue(WORKER_COUNT)
-    result_queue = Queue()
+            # start processes
+            build_process.start()
+            for n in range(WORKER_COUNT):
+                fit_process[n].start()
 
-    try:
-        # start the worker processes that will build the mosaic image
-        build_process = Process(target=build_mosaic, args=(result_queue, original_img_large, tiles_data))
+            progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count)
+            for x in range(mosaic.x_tile_count):
+                for y in range(mosaic.y_tile_count):
+                    large_box = (x * TILE_SIZE, y * TILE_SIZE, (x + 1)
+                                * TILE_SIZE, (y + 1) * TILE_SIZE)
+                    small_box = (x * TILE_SIZE/TILE_BLOCK_SIZE, y * TILE_SIZE/TILE_BLOCK_SIZE,
+                                (x + 1) * TILE_SIZE/TILE_BLOCK_SIZE, (y + 1) * TILE_SIZE/TILE_BLOCK_SIZE)
+                    work_queue.put(
+                        (list(original_img_small.crop(small_box).getdata()), large_box))
+                    progress.update()
 
-        # start the worker processes that will perform the tile fitting
-        for n in range(WORKER_COUNT):
-            fit_process.append(Process(target=fit_tiles, args=(work_queue, result_queue, tiles_data, TILES_USED)))
+        except KeyboardInterrupt:
+            print('\nHalting, please wait...')
+            pass
 
-        # start processes
-        build_process.start()
-        for n in range(WORKER_COUNT):
-            fit_process[n].start()
-
-        # join processes
-        # for n in range(WORKER_COUNT):
-        #    fit_process[n].join()
-
-        progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count)
-        for x in range(mosaic.x_tile_count):
-            for y in range(mosaic.y_tile_count):
-                large_box = (x * TILE_SIZE, y * TILE_SIZE, (x + 1)
-                             * TILE_SIZE, (y + 1) * TILE_SIZE)
-                small_box = (x * TILE_SIZE/TILE_BLOCK_SIZE, y * TILE_SIZE/TILE_BLOCK_SIZE,
-                             (x + 1) * TILE_SIZE/TILE_BLOCK_SIZE, (y + 1) * TILE_SIZE/TILE_BLOCK_SIZE)
-                work_queue.put(
-                    (list(original_img_small.crop(small_box).getdata()), large_box))
-                progress.update()
-
-    except KeyboardInterrupt:
-        print('\nHalting, please wait...')
-        pass
-
-    finally:
-        # put these special values onto the queue to let the workers know they can terminate
-        for n in range(WORKER_COUNT):
-            work_queue.put((EOQ_VALUE, EOQ_VALUE))
+        finally:
+            # put these special values onto the queue to let the workers know they can terminate
+            for n in range(WORKER_COUNT):
+                work_queue.put((EOQ_VALUE, EOQ_VALUE))
 
 
-def mosaic(img_path, tiles_path):
+def mosaic(img_path, tiles_path, output_file):
     image_data = TargetImage(img_path).get_data()
     data_tiles = TileProcessor(tiles_path).get_tiles()
+    if output_file:
+        OUT_FILE = output_file
     compose(image_data, data_tiles)
 
 
 if __name__ == '__main__':
+    freeze_support()
     if len(sys.argv) < 3:
         print('Usage: {} <image> <tiles directory>\r'.format(sys.argv[0]))
-        mosaic('./shibaswap-icon.ee749b42(400x400).png', './imagesCopy/')
+        mosaic('./shibaswap-icon.ee749b42(400x400).png',
+               './imagesCopy/', OUT_FILE)
     else:
-        mosaic(sys.argv[1], sys.argv[2])
+        mosaic(sys.argv[1], sys.argv[2], sys.argv[3])
