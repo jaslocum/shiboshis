@@ -13,14 +13,14 @@ TILE_MATCH_RES = 4
 # the mosaic image will be this many times wider and taller than the original
 ENLARGEMENT = 32
 # percentage of all potential tiles to sample per each get_best_fit_tile attempt
-TILE_SAMPLE_PERCENT = .05
+TILE_SAMPLE_PERCENT = .10
 # surprise stop percentage chance
 SURPRISE_STOP = 0
 # starting point in tile array
 # grid of 80 * 125 = 10,000 (poster)
 # grid of 100 * 100 = 10,000 (square)
-START_X = 50
-START_Y = 50
+START_X = 40
+START_Y = 63
 
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
 # WORKER_COUNT = max(cpu_count() - 1, 1)
@@ -252,7 +252,7 @@ def compose(original_img, tiles):
     tiles_data = [list(tile.getdata()) for tile in tiles_large]
     all_tile_data_small = [list(tile.getdata()) for tile in tiles_small]
     tiles_used = list([1 for tile in tiles_large])
-    tiles_assigned = [[1 for x in range(mosaic.x_tile_count)] for y in range(mosaic.y_tile_count)] 
+    tiles_assigned = [[1 for y in range(mosaic.y_tile_count)] for x in range(mosaic.x_tile_count)] 
     try:
         # start the worker processes that will build the mosaic image
         Process(target=build_mosaic, args=(
@@ -299,7 +299,8 @@ def compose(original_img, tiles):
 
 def next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y):
     if  x >= 0 and x < mosaic.x_tile_count:
-        if y >= 0 and x < mosaic.y_tile_count:
+        if y >= 0 and y < mosaic.y_tile_count:
+            print(format(x) + ', ' + format(y))
             if tiles_assigned[x][y] == 1:
                 tiles_assigned[x][y] = 0
                 large_box = (x * TILE_SIZE, y * TILE_SIZE, (x + 1)
@@ -311,7 +312,6 @@ def next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, 
                 progress.update()
 
 def mosaic(img_path, tiles_path):
-    global OUT_FILE
     image_data = TargetImage(img_path).get_data()
     data_tiles = TileProcessor(tiles_path).get_tiles()
     compose(image_data, data_tiles)
@@ -321,7 +321,7 @@ if __name__ == '__main__':
     freeze_support()
     if len(sys.argv) < 3:
         print('Usage: {} <image> <tiles directory>\r'.format(sys.argv[0]))
-        mosaic('./shibaswap-icon.ee749b42(400x400).png',
+        mosaic('./shib-bone-leash(320x500).png',
                './imagesCopy/')
     else:
         mosaic(sys.argv[1], sys.argv[2])
