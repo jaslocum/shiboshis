@@ -11,7 +11,7 @@ TILE_SIZE = 128  # height/width of mosaic tiles in pixels
 # tile matching resolution (higher values give better fit but require more processing)
 TILE_MATCH_RES = 4
 # the mosaic image will be this many times wider and taller than the original
-ENLARGEMENT = 32
+ENLARGEMENT = 100
 # percentage of all potential tiles to sample per each get_best_fit_tile attempt
 TILE_SAMPLE_PERCENT = .10
 # surprise stop percentage chance
@@ -19,8 +19,8 @@ SURPRISE_STOP = 0
 # starting point in tile array
 # grid of 80 * 125 = 10,000 (poster)
 # grid of 100 * 100 = 10,000 (square)
-START_X = 40
-START_Y = 63
+START_X = 50
+START_Y = 50
 
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
 # WORKER_COUNT = max(cpu_count() - 1, 1)
