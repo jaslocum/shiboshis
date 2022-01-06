@@ -13,9 +13,14 @@ TILE_MATCH_RES = 4
 # the mosaic image will be this many times wider and taller than the original
 ENLARGEMENT = 32
 # percentage of all potential tiles to sample per each get_best_fit_tile attempt
-TILE_SAMPLE_PERCENT = .01
+TILE_SAMPLE_PERCENT = .05
 # surprise stop percentage chance
-SURPRISE_STOP = .10
+SURPRISE_STOP = 0
+# starting point in tile array
+# grid of 80 * 125 = 10,000 (poster)
+# grid of 100 * 100 = 10,000 (square)
+START_X = 50
+START_Y = 50
 
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
 # WORKER_COUNT = max(cpu_count() - 1, 1)
@@ -240,14 +245,14 @@ def compose(original_img, tiles):
     print('compose: press Ctrl-C to abort...')
     original_img_large, original_img_small = original_img
     tiles_large, tiles_small = tiles
-    fit_process = []
 
     mosaic = MosaicImage(original_img_large)
     work_queue = Queue(WORKER_COUNT)
     result_queue = Queue()
     tiles_data = [list(tile.getdata()) for tile in tiles_large]
     all_tile_data_small = [list(tile.getdata()) for tile in tiles_small]
-    TILES_USED = list([1 for tile in tiles_large])
+    tiles_used = list([1 for tile in tiles_large])
+    tiles_assigned = [[1 for x in range(mosaic.x_tile_count)] for y in range(mosaic.y_tile_count)] 
     try:
         # start the worker processes that will build the mosaic image
         Process(target=build_mosaic, args=(
@@ -255,18 +260,33 @@ def compose(original_img, tiles):
 
         # start the worker processes that will perform the tile fitting
         for n in range(WORKER_COUNT):
-            Process(target=fit_tiles, args=(work_queue, result_queue, tiles_data, TILES_USED)).start()
+            Process(target=fit_tiles, args=(work_queue, result_queue, tiles_data, tiles_used)).start()
 
         progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count)
-        for x in range(mosaic.x_tile_count):
-            for y in range(mosaic.y_tile_count):
-                large_box = (x * TILE_SIZE, y * TILE_SIZE, (x + 1)
-                            * TILE_SIZE, (y + 1) * TILE_SIZE)
-                small_box = (x * TILE_SIZE/TILE_BLOCK_SIZE, y * TILE_SIZE/TILE_BLOCK_SIZE,
-                            (x + 1) * TILE_SIZE/TILE_BLOCK_SIZE, (y + 1) * TILE_SIZE/TILE_BLOCK_SIZE)
-                work_queue.put(
-                    (list(original_img_small.crop(small_box).getdata()), large_box))
-                progress.update()
+        
+        #square onion layer (mayber circular someday...)
+        onion_layer = 0
+        while onion_layer < mosaic.x_tile_count or onion_layer < mosaic.y_tile_count:
+            if onion_layer > 0:
+                # north side of onion
+                y = START_Y - onion_layer
+                for x in range((START_X - onion_layer), (START_X + onion_layer)):
+                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                # east side of onion
+                x = START_X + onion_layer
+                for y in range((START_Y - onion_layer), (START_Y + onion_layer + 1)):
+                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                # south side of onion
+                y = START_Y + onion_layer
+                for x in range((START_X - onion_layer), (START_X + onion_layer)):
+                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                # west side of onion
+                x = START_X - onion_layer
+                for y in range((START_Y - onion_layer), (START_Y + onion_layer)):
+                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+            else:
+                next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, START_X, START_Y)
+            onion_layer += 1
 
     except KeyboardInterrupt:
         print('\nHalting, please wait...')
@@ -277,6 +297,18 @@ def compose(original_img, tiles):
         for n in range(WORKER_COUNT):
             work_queue.put((EOQ_VALUE, EOQ_VALUE))
 
+def next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y):
+    if  x >= 0 and x < mosaic.x_tile_count:
+        if y >= 0 and x < mosaic.y_tile_count:
+            if tiles_assigned[x][y] == 1:
+                tiles_assigned[x][y] = 0
+                large_box = (x * TILE_SIZE, y * TILE_SIZE, (x + 1)
+                            * TILE_SIZE, (y + 1) * TILE_SIZE)
+                small_box = (x * TILE_SIZE/TILE_BLOCK_SIZE, y * TILE_SIZE/TILE_BLOCK_SIZE,
+                            (x + 1) * TILE_SIZE/TILE_BLOCK_SIZE, (y + 1) * TILE_SIZE/TILE_BLOCK_SIZE)
+                work_queue.put(
+                    (list(original_img_small.crop(small_box).getdata()), large_box))
+                progress.update()
 
 def mosaic(img_path, tiles_path):
     global OUT_FILE
