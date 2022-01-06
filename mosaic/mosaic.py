@@ -300,7 +300,6 @@ def compose(original_img, tiles):
 def next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y):
     if  x >= 0 and x < mosaic.x_tile_count:
         if y >= 0 and y < mosaic.y_tile_count:
-            print(format(x) + ', ' + format(y))
             if tiles_assigned[x][y] == 1:
                 tiles_assigned[x][y] = 0
                 large_box = (x * TILE_SIZE, y * TILE_SIZE, (x + 1)
