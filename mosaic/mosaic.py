@@ -1,7 +1,7 @@
 from multiprocessing.spawn import freeze_support
 from PIL import Image, ImageOps
 Image.MAX_IMAGE_PIXELS = None
-from multiprocessing import Process, Queue, cpu_count
+from multiprocessing import Array, Process, Queue, cpu_count
 import sys
 import os
 import random
@@ -13,14 +13,22 @@ TILE_MATCH_RES = 4
 # the mosaic image will be this many times wider and taller than the original
 ENLARGEMENT = 16
 # percentage of all potential tiles to sample per each get_best_fit_tile attempt
-TILE_SAMPLE_PERCENT = .05
+TILE_SAMPLE_PERCENT = .1
 # surprise stop percentage chance
 SURPRISE_STOP = 0
 # starting point in tile array
 # grid of 80 * 125 = 10,000 (poster)
 # grid of 100 * 100 = 10,000 (square)
-START_X = 40
-START_Y = 63
+# set radius's to 0 to disable an onion render (1-3)
+START_SQUARES = 3
+START_SQUARES_ARRAY = [[0]*START_SQUARES for i in range(3)]
+# start square array:
+#  element1 = start at x pos
+#  element2 = start at y pos
+#  element3 = layers to center of onion
+START_SQUARES_ARRAY[0] = [40, 40, 30]
+START_SQUARES_ARRAY[1] = [22, 75, 15]
+START_SQUARES_ARRAY[2] = [55, 75, 15]
 
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
 # WORKER_COUNT = max(cpu_count() - 1, 1)
@@ -264,30 +272,42 @@ def compose(original_img, tiles):
 
         progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count)
         
-        #square onion layer (mayber circular someday...)
-        onion_layer = 0
-        while onion_layer < mosaic.x_tile_count or onion_layer < mosaic.y_tile_count:
-            if onion_layer > 0:
-                # north side of onion
-                y = START_Y - onion_layer
-                for x in range((START_X - onion_layer), (START_X + onion_layer)):
-                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
-                # east side of onion
-                x = START_X + onion_layer
-                for y in range((START_Y - onion_layer), (START_Y + onion_layer + 1)):
-                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
-                # south side of onion
-                y = START_Y + onion_layer
-                for x in range((START_X - onion_layer), (START_X + onion_layer)):
-                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
-                # west side of onion
-                x = START_X - onion_layer
-                for y in range((START_Y - onion_layer), (START_Y + onion_layer)):
-                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
-            else:
-                next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, START_X, START_Y)
-            onion_layer += 1
+        # render defined start squares first
+        current_start_square = 0
+        while current_start_square < START_SQUARES:
+            # square onion layer (mayber circular someday...)
+            onion_layer = 0
+            start_x = START_SQUARES_ARRAY[current_start_square][0]
+            start_y = START_SQUARES_ARRAY[current_start_square][1]
+            onion_layers = START_SQUARES_ARRAY[current_start_square][2]
+            while onion_layer <= onion_layers:
+                if onion_layer > 0:
+                    # north side of onion
+                    y = start_y - onion_layer
+                    for x in range((start_x - onion_layer), (start_x + onion_layer)):
+                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                    # east side of onion
+                    x = start_x + onion_layer
+                    for y in range((start_y - onion_layer), (start_y + onion_layer + 1)):
+                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                    # south side of onion
+                    y = start_y + onion_layer
+                    for x in range((start_x - onion_layer), (start_x + onion_layer)):
+                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                    # west side of onion
+                    x = start_x - onion_layer
+                    for y in range((start_y - onion_layer), (start_y + onion_layer)):
+                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                else:
+                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, start_x, start_y)
+                onion_layer += 1
+            current_start_square += 1
 
+        # render rest of image left to right and top to bottom
+        for y in range(mosaic.y_tile_count):
+            for x in range(mosaic.x_tile_count):
+                next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+ 
     except KeyboardInterrupt:
         print('\nHalting, please wait...')
         pass
@@ -306,8 +326,7 @@ def next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, 
                             * TILE_SIZE, (y + 1) * TILE_SIZE)
                 small_box = (x * TILE_SIZE/TILE_BLOCK_SIZE, y * TILE_SIZE/TILE_BLOCK_SIZE,
                             (x + 1) * TILE_SIZE/TILE_BLOCK_SIZE, (y + 1) * TILE_SIZE/TILE_BLOCK_SIZE)
-                work_queue.put(
-                    (list(original_img_small.crop(small_box).getdata()), large_box))
+                work_queue.put((list(original_img_small.crop(small_box).getdata()), large_box))
                 progress.update()
 
 def mosaic(img_path, tiles_path):
