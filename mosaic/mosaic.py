@@ -26,13 +26,13 @@ START_SQUARES_ARRAY = [[0]*START_SQUARES for i in range(3)]
 #  element1 = start at x pos
 #  element2 = start at y pos
 #  element3 = layers to center of onion
-START_SQUARES_ARRAY[0] = [41, 60, 30]
+START_SQUARES_ARRAY[0] = [41, 58, 31]
 # START_SQUARES_ARRAY[1] = [22, 87, 16]
 # START_SQUARES_ARRAY[2] = [55, 87, 16]
 # type of fit for get_best_fit_tile selection mode
 BEST_FIT = 1
 RANDOM_FIT = 2
-FINAL_FIT = RANDOM_FIT
+FINAL_FIT = BEST_FIT
 
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
 # WORKER_COUNT = max(cpu_count() - 1, 1)
