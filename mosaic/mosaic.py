@@ -325,7 +325,7 @@ def compose(original_img, tiles):
     finally:
         # put these special values onto the queue to let the workers know they can terminate
         for n in range(WORKER_COUNT):
-            work_queue.put((EOQ_VALUE, EOQ_VALUE))
+            work_queue.put((EOQ_VALUE, EOQ_VALUE, FINAL_FIT))
 
 def next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y, fit_mode):
     if  x >= 0 and x < mosaic.x_tile_count:
