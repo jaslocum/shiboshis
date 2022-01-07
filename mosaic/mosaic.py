@@ -26,9 +26,13 @@ START_SQUARES_ARRAY = [[0]*START_SQUARES for i in range(3)]
 #  element1 = start at x pos
 #  element2 = start at y pos
 #  element3 = layers to center of onion
-START_SQUARES_ARRAY[0] = [40, 40, 30]
-START_SQUARES_ARRAY[1] = [22, 75, 15]
-START_SQUARES_ARRAY[2] = [55, 75, 15]
+START_SQUARES_ARRAY[0] = [38, 43, 28]
+START_SQUARES_ARRAY[1] = [22, 87, 15]
+START_SQUARES_ARRAY[2] = [55, 87, 15]
+# type of fit for get_best_fit_tile selection mode
+BEST_FIT = 1
+RANDOM_FIT = 2
+FINAL_FIT = RANDOM_FIT
 
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
 # WORKER_COUNT = max(cpu_count() - 1, 1)
@@ -134,18 +138,22 @@ class TileFitter:
                 return diff
         return diff
 
-    def get_best_fit_tile(self, img_data):
+    def get_best_fit_tile(self, img_data, fit_mode):
         best_fit_tile_index = None
         min_diff = sys.maxsize
         tile_index = 0
         max_tries = 1
         len_tiles_data = len(self.tiles_data)
-        if len_tiles_data > TILE_SAMPLE_PERCENT:
-            max_tries = round(len_tiles_data*TILE_SAMPLE_PERCENT)
+        if fit_mode == RANDOM_FIT:
+            # only try once so best fit will likely not be found, just a random tile will be selected
+            max_tries = 2
+        else:
+            if len_tiles_data > TILE_SAMPLE_PERCENT:
+                max_tries = round(len_tiles_data*TILE_SAMPLE_PERCENT)
         # skip set of tiles examined to provide even error to matching of tiles
         trys = 1
         # go through each tile in turn looking for the best match for the part of the image represented by 'img_data'
-        # if we are at the end of remaining tiles, the return best fit so far
+        # if we are at the end of remaining tiles, the return best fit so far          
         while trys < max_tries:
             tile_index = random.randint(0, len_tiles_data - 1)
             if random.random() < SURPRISE_STOP:
@@ -180,6 +188,8 @@ class TileFitter:
                     else:
                         # unlock tile to be used by other threads while searching for best fits
                         self.__unlock_tile(tile_index)
+                    if fit_mode == RANDOM_FIT:
+                        tile_index = len_tiles_data
                 tile_index += 1
         return best_fit_tile_index
 
@@ -189,10 +199,10 @@ def fit_tiles(work_queue, result_queue, tiles_data, tiles_used):
     tile_fitter = TileFitter(tiles_data, tiles_used)
     while True:
         try:
-            img_data, img_coords = work_queue.get(True)
+            img_data, img_coords, fit_mode = work_queue.get(True)
             if img_data == EOQ_VALUE:
                 break
-            tile_index = tile_fitter.get_best_fit_tile(img_data)
+            tile_index = tile_fitter.get_best_fit_tile(img_data, fit_mode)
             if tile_index != None:
                 result_queue.put((img_coords, tile_index))
             else:
@@ -285,28 +295,28 @@ def compose(original_img, tiles):
                     # north side of onion
                     y = start_y - onion_layer
                     for x in range((start_x - onion_layer), (start_x + onion_layer)):
-                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y, BEST_FIT)
                     # east side of onion
                     x = start_x + onion_layer
                     for y in range((start_y - onion_layer), (start_y + onion_layer + 1)):
-                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y, BEST_FIT)
                     # south side of onion
                     y = start_y + onion_layer
                     for x in range((start_x - onion_layer), (start_x + onion_layer)):
-                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y, BEST_FIT)
                     # west side of onion
                     x = start_x - onion_layer
                     for y in range((start_y - onion_layer), (start_y + onion_layer)):
-                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                        next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y, BEST_FIT)
                 else:
-                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, start_x, start_y)
+                    next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, start_x, start_y, BEST_FIT)
                 onion_layer += 1
             current_start_square += 1
 
         # render rest of image left to right and top to bottom
         for y in range(mosaic.y_tile_count):
             for x in range(mosaic.x_tile_count):
-                next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y)
+                next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y, FINAL_FIT)
  
     except KeyboardInterrupt:
         print('\nHalting, please wait...')
@@ -317,7 +327,7 @@ def compose(original_img, tiles):
         for n in range(WORKER_COUNT):
             work_queue.put((EOQ_VALUE, EOQ_VALUE))
 
-def next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y):
+def next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, x, y, fit_mode):
     if  x >= 0 and x < mosaic.x_tile_count:
         if y >= 0 and y < mosaic.y_tile_count:
             if tiles_assigned[x][y] == 1:
@@ -326,7 +336,7 @@ def next_tile(work_queue, progress, mosaic, original_img_small, tiles_assigned, 
                             * TILE_SIZE, (y + 1) * TILE_SIZE)
                 small_box = (x * TILE_SIZE/TILE_BLOCK_SIZE, y * TILE_SIZE/TILE_BLOCK_SIZE,
                             (x + 1) * TILE_SIZE/TILE_BLOCK_SIZE, (y + 1) * TILE_SIZE/TILE_BLOCK_SIZE)
-                work_queue.put((list(original_img_small.crop(small_box).getdata()), large_box))
+                work_queue.put((list(original_img_small.crop(small_box).getdata()), large_box, fit_mode))
                 progress.update()
 
 def mosaic(img_path, tiles_path):
