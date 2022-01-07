@@ -20,15 +20,15 @@ SURPRISE_STOP = 0
 # grid of 80 * 125 = 10,000 (poster)
 # grid of 100 * 100 = 10,000 (square)
 # set radius's to 0 to disable an onion render (1-3)
-START_SQUARES = 3
+START_SQUARES = 1
 START_SQUARES_ARRAY = [[0]*START_SQUARES for i in range(3)]
 # start square array:
 #  element1 = start at x pos
 #  element2 = start at y pos
 #  element3 = layers to center of onion
-START_SQUARES_ARRAY[0] = [38, 43, 28]
-START_SQUARES_ARRAY[1] = [22, 87, 15]
-START_SQUARES_ARRAY[2] = [55, 87, 15]
+START_SQUARES_ARRAY[0] = [41, 60, 30]
+# START_SQUARES_ARRAY[1] = [22, 87, 16]
+# START_SQUARES_ARRAY[2] = [55, 87, 16]
 # type of fit for get_best_fit_tile selection mode
 BEST_FIT = 1
 RANDOM_FIT = 2
