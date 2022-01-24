@@ -275,7 +275,7 @@ def fit_tiles(work_queue, result_queue, mosaic, tiles_data, tiles_used):
     while True:
         try:
             img_data, img_coords, x, y, fit_mode = work_queue.get(True)
-            if img_data == EOQ_VALUE:
+            if img_data == EOQ_VALUE or fit_mode == EOQ_VALUE:
                 break
             if not mosaic.get_tile_assigned(x, y):
                 if not img_data_is_empty(img_data):
@@ -284,11 +284,11 @@ def fit_tiles(work_queue, result_queue, mosaic, tiles_data, tiles_used):
                         mosaic.set_tile_assigned(x, y)
                         result_queue.put((mosaic, img_coords, tile_index))
                     else:
-                        # let the result handler know that this worker has finished everything
-                        result_queue.put((mosaic, EOQ_VALUE, EOQ_VALUE))
                         break
         except KeyboardInterrupt:
             pass
+    # let the result handler know that this worker has finished everything
+    result_queue.put((mosaic, EOQ_VALUE, EOQ_VALUE))
 
 
 def build_mosaic(result_queue, tiles_data):
@@ -382,7 +382,10 @@ def compose(original1_img, oringinal2_img, tiles):
             for x in range(mosaic.x_tile_count):
                 next_tile(work_queue, progress, original_img1_small,
                           x, y,  x_tile_count, y_tile_count, FINAL_FIT)
- 
+
+        next_tile(work_queue, progress, original_img1_small,
+                  x, y,  x_tile_count, y_tile_count, EOQ_VALUE)
+
     except KeyboardInterrupt:
         print('\nHalting, please wait...')
         pass
