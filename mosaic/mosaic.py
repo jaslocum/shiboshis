@@ -330,7 +330,7 @@ def compose(original1_img, oringinal2_img, tiles):
         progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count)
 
         # render rest of image left to right and top to bottom
-        if mosaic != None:
+        if original_img2_small != None:
             for y in range(mosaic.y_tile_count):
                 for x in range(mosaic.x_tile_count):
                     next_tile(work_queue, progress, mosaic, original_img2_small, tiles_assigned, x, y, FINAL_FIT)
