@@ -4,7 +4,7 @@ This utility can be used to generate [photo-mosaic](http://en.wikipedia.org/wiki
 
 Run the utility from the command line, as follows:
 
-<pre>python mosaic.py &lt;image_finish&gt; &lt;[image_start]&gt; &lt;tiles directory&gt;
+<pre>python mosaic.py &lt;image_finish&gt; [&lt;image_start&gt;] &lt;tiles directory&gt;
 </pre>
 
 *   The `image_finish` argument should contain the path to the image for which you want to build the mosaic
