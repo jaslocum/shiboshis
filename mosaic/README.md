@@ -8,7 +8,7 @@ Run the utility from the command line, as follows:
 </pre>
 
 *   The `image_finish` argument should contain the path to the image for which you want to build the mosaic
-*   The `image_finish` argument should contain the path to the image for which you want render first with best fit (optional)
+*   The `image_start` argument should contain the path to the image for which you want render first with best fit (optional) - leave areas to not be fitted with null values (0,0,0)
 *   The `tiles directory` argument should contain the path to the directory containing the tile images (the directory will be searched recursively, so it doesn't matter if some of the images are contained in sub-directories)
 
 Multi processing has been removed from original code for simplicity
