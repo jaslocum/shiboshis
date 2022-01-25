@@ -13,7 +13,7 @@ TILE_MATCH_RES = 8
 # the mosaic image will be this many times wider and taller than the original
 ENLARGEMENT = 16
 # percentage of all potential tiles to sample per each get_best_fit_tile attempt
-BEST_FIT_TILE_SAMPLE_PERCENT = .25
+BEST_FIT_TILE_SAMPLE_PERCENT = .3
 FINAL_FIT_TILE_SAMPLE_PERCENT = .1
 # surprise stop percentage chance
 SURPRISE_STOP = 0
