@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["./shiboshi love 1(320x500).PNG", "./shiboshi love 2(320x500).PNG", "./images"]
+            "args": ["./shiboshi love 1(320x500).PNG", "./shiboshi love 2(320x500).PNG", "./imagesCopy"]
         }
     ]
 }

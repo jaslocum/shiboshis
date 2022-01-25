@@ -33,18 +33,17 @@ START_SQUARES_ARRAY[0] = [40, 61, 33]
 BEST_FIT = 1
 RANDOM_FIT = 2
 FINAL_FIT = BEST_FIT
-
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
 # WORKER_COUNT = max(cpu_count() - 1, 1)
 WORKER_COUNT = 1
 OUT_FILE = 'mosaic.jpeg'
 EOQ_VALUE = None
+# GLOBAL TILE DATA
+TILE_DATA = None
+TILES_DATA = None
+TILES_DIRECTORY = None
 
-
-class TileProcessor:
-    def __init__(self, tiles_directory):
-        self.tiles_directory = tiles_directory
-
+class TileProcessor:    
     def __process_tile(self, tile_path):
         try:
             img = Image.open(tile_path)
@@ -71,7 +70,7 @@ class TileProcessor:
         large_tiles = []
         small_tiles = []
         # search the tiles directory recursively
-        for root, subFolders, files in os.walk(self.tiles_directory):
+        for root, subFolders, files in os.walk(TILES_DIRECTORY):
             for tile_name in files:
                 print('get_tiles: Reading {:40.40}'.format(tile_name), flush=True, end='\r')
                 tile_path = os.path.join(root, tile_name)
@@ -268,45 +267,32 @@ class MosaicImage:
     def save(self, path):
         self.image.save(path)
 
-
-def fit_tiles(work_queue, result_queue, mosaic, tiles_data, tiles_used):
+q
+def fit_tiles(mosaic, tile_fitter, tiles_data, tiles_used, img_data, image_coords, x, y, fit_mode):
     # this function gets run by the worker processes, one on each CPU core
-    tile_fitter = TileFitter(tiles_data, tiles_used)
+    
     while True:
         try:
             img_data, img_coords, x, y, fit_mode = work_queue.get(True)
-            if img_data == EOQ_VALUE or fit_mode == EOQ_VALUE:
+            if img_data == EOQ_VALUE:
                 break
             if not mosaic.get_tile_assigned(x, y):
                 if not img_data_is_empty(img_data):
                     tile_index = tile_fitter.get_best_fit_tile(img_data, fit_mode)
                     if tile_index != None:
                         mosaic.set_tile_assigned(x, y)
-                        result_queue.put((mosaic, img_coords, tile_index))
-                    else:
-                        break
-        except KeyboardInterrupt:
-            pass
+                        build_mosaic(mosaic, img_coords, tile_index, tiles_data)
     # let the result handler know that this worker has finished everything
-    result_queue.put((mosaic, EOQ_VALUE, EOQ_VALUE))
+    build_mosaic(mosaic, EOQ_VALUE, EOQ_VALUE, tiles_data)
 
 
-def build_mosaic(result_queue, tiles_data):
-    active_workers = WORKER_COUNT
-    while True:
-        try:
-            mosaic, img_coords, best_fit_tile_index = result_queue.get()
-            if img_coords == EOQ_VALUE:
-                active_workers -= 1
-                if not active_workers:
-                    mosaic.save(OUT_FILE)
-                    break
-            else:
-                tile_data = tiles_data[best_fit_tile_index]
-                mosaic.add_tile(tile_data, img_coords)
-        except KeyboardInterrupt:
-            pass        
-    print('\nFinished, output is in', OUT_FILE)
+def build_mosaic(mosaic, img_coords, tile_index, tiles_data):
+    if img_coords == EOQ_VALUE:
+        mosaic.save(OUT_FILE)
+        print('\nFinished, output is in', OUT_FILE)
+    else:
+        tile_data = tiles_data[tile_index]
+        mosaic.add_tile(tile_data, img_coords)
 
 def compose(original1_img, oringinal2_img, tiles):
     print('compose: press Ctrl-C to abort...')
@@ -322,24 +308,18 @@ def compose(original1_img, oringinal2_img, tiles):
     x_tile_count = mosaic.x_tile_count
     y_tile_count = mosaic.y_tile_count
     work_queue = Queue(WORKER_COUNT)
-    result_queue = Queue()
-    tiles_data = [list(tile.getdata()) for tile in tiles_large]
-    tiles_used = list([1 for tile in tiles_large])
+    TILES_DATA = [list(tile.getdata()) for tile in tiles_large]
+    TILES_USED = list([1 for tile in tiles_large])
+    TILES_DIRECTORY = 
     try:
-        # start the worker processes that will build the mosaic image
-        Process(target=build_mosaic, args=(result_queue, tiles_data)).start()
-
-        # start the worker processes that will perform the tile fitting
-        for n in range(WORKER_COUNT):
-            Process(target=fit_tiles, args=(work_queue, result_queue, mosaic, tiles_data, tiles_used)).start()
-
         progress = ProgressCounter(mosaic.x_tile_count * mosaic.y_tile_count * 2)
 
         # render rest of image left to right and top to bottom
         if original_img2_small != None:
             for y in range(mosaic.y_tile_count):
                 for x in range(mosaic.x_tile_count):
-                    next_tile(work_queue, progress, original_img2_small, x, y, x_tile_count, y_tile_count, BEST_FIT)
+                    next_tile(work_queue, progress, original_img2_small,
+                        x, y,  x_tile_count, y_tile_count, BEST_FIT)
 
         # render defined start squares first
         current_start_square = 0
@@ -383,9 +363,6 @@ def compose(original1_img, oringinal2_img, tiles):
                 next_tile(work_queue, progress, original_img1_small,
                           x, y,  x_tile_count, y_tile_count, FINAL_FIT)
 
-        next_tile(work_queue, progress, original_img1_small,
-                  x, y,  x_tile_count, y_tile_count, EOQ_VALUE)
-
     except KeyboardInterrupt:
         print('\nHalting, please wait...')
         pass
@@ -406,21 +383,18 @@ def next_tile(work_queue, progress, original_img_small, x, y, x_tile_count, y_ti
             progress.update()
 
 def mosaic(img1_path, img2_path, tiles_path):
+    TILES_DIRECTORY = tiles_path
     image1_data = TargetImage1(img1_path).get_data()
     if img2_path == None:
         image2_data = None
     else:
         image2_data = TargetImage2(img2_path).get_data()
-    data_tiles = TileProcessor(tiles_path).get_tiles()
+    data_tiles = TileProcessor().get_tiles()
     compose(image1_data, image2_data, data_tiles)
 
 if __name__ == '__main__':
     freeze_support()
-    if len(sys.argv) < 2:
-        print('Usage: {} <image> <tiles directory>\r'.format(sys.argv[0]))
-        mosaic('./shiboshi love 1(320x500).png', './shiboshi love 2(320x500).png', './imagesCopy/')
+    if len(sys.argv) == 4:
+        mosaic(sys.argv[1], sys.argv[2], sys.argv[3])
     else:
-        if len(sys.argv) == 4:
-            mosaic(sys.argv[1], sys.argv[2], sys.argv[3])
-        else:
-            mosaic(sys.argv[1], None, sys.argv[2])
+        mosaic(sys.argv[1], None, sys.argv[2])
