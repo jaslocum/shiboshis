@@ -13,7 +13,8 @@ TILE_MATCH_RES = 8
 # the mosaic image will be this many times wider and taller than the original
 ENLARGEMENT = 16
 # percentage of all potential tiles to sample per each get_best_fit_tile attempt
-TILE_SAMPLE_PERCENT = .1
+BEST_FIT_TILE_SAMPLE_PERCENT = .25
+FINAL_FIT_TILE_SAMPLE_PERCENT = .1
 # surprise stop percentage chance
 SURPRISE_STOP = 0
 # starting point in tile array
@@ -31,8 +32,8 @@ START_SQUARES_ARRAY[0] = [40, 61, 33]
 # START_SQUARES_ARRAY[2] = [55, 87, 16]
 # type of fit for get_best_fit_tile selection mode
 BEST_FIT = 1
+FINAL_FIT = 3
 RANDOM_FIT = 2
-FINAL_FIT = BEST_FIT
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
 # WORKER_COUNT = max(cpu_count() - 1, 1)
 WORKER_COUNT = 1
@@ -174,8 +175,12 @@ class TileFitter:
             # only try once so best fit will likely not be found, just a random tile will be selected
             max_tries = 2
         else:
-            if len_tiles_data > TILE_SAMPLE_PERCENT:
-                max_tries = round(len_tiles_data*TILE_SAMPLE_PERCENT)
+            if fit_mode == BEST_FIT:
+                tile_sample_percent = BEST_FIT_TILE_SAMPLE_PERCENT
+            else:
+                tile_sample_percent = FINAL_FIT_TILE_SAMPLE_PERCENT
+            if len_tiles_data > (tile_sample_percent * len_tiles_data):
+                max_tries = round(len_tiles_data*tile_sample_percent)
         # skip set of tiles examined to provide even error to matching of tiles
         trys = 1
         # go through each tile in turn looking for the best match for the part of the image represented by 'img_data'
