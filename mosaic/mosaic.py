@@ -9,11 +9,11 @@ import random
 # Change these 3 config parameters to suit your needs...
 TILE_SIZE = 64  # height/width of mosaic tiles in pixels
 # tile matching resolution (higher values give better fit but require more processing)
-TILE_MATCH_RES = 8
+TILE_MATCH_RES = 16
 # the mosaic image will be this many times wider and taller than the original
 ENLARGEMENT = 16
 # percentage of all potential tiles to sample per each get_best_fit_tile attempt
-BEST_FIT_TILE_SAMPLE_PERCENT = .4
+BEST_FIT_TILE_SAMPLE_PERCENT = .2
 FINAL_FIT_TILE_SAMPLE_PERCENT = .1
 # surprise stop percentage chance
 SURPRISE_STOP = 0
