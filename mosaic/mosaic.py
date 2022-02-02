@@ -293,7 +293,6 @@ def build_mosaic(mosaic, tile_fitter, img_coords, tile_index):
 
 def compose(original1_img, oringinal2_img, oringinal3_img, oringinal4_img, tiles):
     print('compose: press Ctrl-C to abort...')
-    render_first_image_small = None
     original_img1_large, original_img1_small = original1_img
     if oringinal2_img == None:
         original_img2_large = None
@@ -325,27 +324,49 @@ def compose(original1_img, oringinal2_img, oringinal3_img, oringinal4_img, tiles
         # generate MAX_FRAMES frames
         while frame < MAX_FRAMES:
 
+            # render best match images left to right and top to bottom
+            # transition from image (1 and 2) to (3 and 4)
+            # images 2 and 4 are the images to match first for best matching
+            # before matching master images 1 and 3
+            render_first_image_small = None
             if frame > 0:
-                # render rest of image left to right and top to bottom
+                # frames 1 thru n
                 if original_img4_small != None:
                     render_first_image_small = original_img4_small
                 else:
                     if original_img2_small != None:
                         render_first_image_small = original_img2_small
             else:
-                # render rest of image left to right and top to bottom
+                # render first frame (0)
                 if original_img2_small != None:
                     render_first_image_small = original_img2_small
-                
+
             if render_first_image_small != None:
                 for y in range(MOSAIC.y_tile_count):
                     for x in range(MOSAIC.x_tile_count):
-                        next_tile(MOSAIC, tile_fitter, progress, original_img2_small,
+                        next_tile(MOSAIC, tile_fitter, progress, render_first_image_small,
                             x, y,  x_tile_count, y_tile_count, BEST_FIT, frame)
+
+            # render best match images left to right and top to bottom
+            # transition from image (1 and 2) to (3 and 4)
+            # images 2 and 4 are the images to match first for best matching
+            # before matching master images 1 and 3
+            render_master_image_small = None
+            if frame > 0:
+                # frames 1 thru n
+                if original_img3_small != None:
+                    render_master_image_small = original_img3_small
+                else:
+                    if original_img1_small != None:
+                        render_master_image_small = original_img1_small
+            else:
+                # render first frame (0)
+                if original_img1_small != None:
+                    render_master_image_small = original_img1_small
 
             # render defined start squares first
             current_start_square = 0
-            while current_start_square < START_SQUARES:
+            while current_start_square < START_SQUARES and render_master_image_small != None:
                 # square onion layer (mayber circular someday...)
                 onion_layer = 0
                 start_x = START_SQUARES_ARRAY[current_start_square][0]
@@ -356,25 +377,25 @@ def compose(original1_img, oringinal2_img, oringinal3_img, oringinal4_img, tiles
                         # north side of onion
                         y = start_y - onion_layer
                         for x in range((start_x - onion_layer), (start_x + onion_layer)):
-                            next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                            next_tile(MOSAIC, tile_fitter, progress, render_master_image_small,
                                     x, y, x_tile_count, y_tile_count, BEST_FIT, frame)
                         # east side of onion
                         x = start_x + onion_layer
                         for y in range((start_y - onion_layer), (start_y + onion_layer + 1)):
-                            next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                            next_tile(MOSAIC, tile_fitter, progress, render_master_image_small,
                                       x, y,  x_tile_count, y_tile_count, BEST_FIT, frame)
                         # south side of onion
                         y = start_y + onion_layer
                         for x in range((start_x - onion_layer), (start_x + onion_layer)):
-                            next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                            next_tile(MOSAIC, tile_fitter, progress, render_master_image_small,
                                       x, y,  x_tile_count, y_tile_count, BEST_FIT, frame)
                         # west side of onion
                         x = start_x - onion_layer
                         for y in range((start_y - onion_layer), (start_y + onion_layer)):
-                            next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                            next_tile(MOSAIC, tile_fitter, progress, render_master_image_small,
                                       x, y,  x_tile_count, y_tile_count, BEST_FIT, frame)
                     else:
-                        next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                        next_tile(MOSAIC, tile_fitter, progress, render_master_image_small,
                                   start_x, start_y,  x_tile_count, y_tile_count, BEST_FIT, frame)
                     onion_layer += 1
                 current_start_square += 1
@@ -382,7 +403,7 @@ def compose(original1_img, oringinal2_img, oringinal3_img, oringinal4_img, tiles
             # render rest of image left to right and top to bottom
             for y in range(MOSAIC.y_tile_count):
                 for x in range(MOSAIC.x_tile_count):
-                    next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                    next_tile(MOSAIC, tile_fitter, progress, render_master_image_small,
                               x, y,  x_tile_count, y_tile_count, FINAL_FIT, frame)
 
             MOSAIC.save(OUT_FILE+str(frame)+'.jpg')
