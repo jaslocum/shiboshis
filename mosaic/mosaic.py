@@ -37,13 +37,14 @@ RANDOM_FIT = 2
 TILE_BLOCK_SIZE = TILE_SIZE / max(min(TILE_MATCH_RES, TILE_SIZE), 1)
 # WORKER_COUNT = max(cpu_count() - 1, 1)
 WORKER_COUNT = 1
-OUT_FILE = 'mosaic.jpeg'
+OUT_FILE = 'mosaic'
 EOQ_VALUE = None
 # GLOBAL TILE DATA
 TILES_DATA = None
 TILES_USED = None
 TILES_DIRECTORY = None
 MOSAIC = None
+MAX_FRAMES = 16
 
 class TileProcessor:    
     def __process_tile(self, tile_path):
@@ -240,10 +241,10 @@ class ProgressCounter:
         self.total = total
         self.counter = 0
 
-    def update(self):
+    def update(self, frame):
         self.counter += 1
         print("Progress: {:04.1f}%".format(
-            100 * self.counter / self.total), flush=True, end='\r')
+            100 * self.counter / self.total)+' frame #'+str(frame), flush=True, end='\r')
 
 
 class MosaicImage:
@@ -298,6 +299,7 @@ def compose(original1_img, oringinal2_img, tiles):
         original_img2_large, original_img2_small = oringinal2_img
     tiles_large, tiles_small = tiles
 
+    frame = 0
     MOSAIC = MosaicImage(original_img1_large)
     x_tile_count = MOSAIC.x_tile_count
     y_tile_count = MOSAIC.y_tile_count
@@ -305,65 +307,70 @@ def compose(original1_img, oringinal2_img, tiles):
     TILES_USED = list([1 for tile in tiles_large])
     tile_fitter = TileFitter(TILES_DATA, TILES_USED)
     try:
-        progress = ProgressCounter(MOSAIC.x_tile_count * MOSAIC.y_tile_count * 2)
+        progress = ProgressCounter(MOSAIC.x_tile_count * MOSAIC.y_tile_count * 2 * MAX_FRAMES)
 
-        # render rest of image left to right and top to bottom
-        if original_img2_small != None:
+        # generate MAX_FRAMES frames
+        while frame < MAX_FRAMES:
+
+            # render rest of image left to right and top to bottom
+            if original_img2_small != None:
+                for y in range(MOSAIC.y_tile_count):
+                    for x in range(MOSAIC.x_tile_count):
+                        next_tile(MOSAIC, tile_fitter, progress, original_img2_small,
+                            x, y,  x_tile_count, y_tile_count, BEST_FIT, frame)
+
+            # render defined start squares first
+            current_start_square = 0
+            while current_start_square < START_SQUARES:
+                # square onion layer (mayber circular someday...)
+                onion_layer = 0
+                start_x = START_SQUARES_ARRAY[current_start_square][0]
+                start_y = START_SQUARES_ARRAY[current_start_square][1]
+                onion_layers = START_SQUARES_ARRAY[current_start_square][2]
+                while onion_layer <= onion_layers:
+                    if onion_layer > 0:
+                        # north side of onion
+                        y = start_y - onion_layer
+                        for x in range((start_x - onion_layer), (start_x + onion_layer)):
+                            next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                                    x, y, x_tile_count, y_tile_count, BEST_FIT, frame)
+                        # east side of onion
+                        x = start_x + onion_layer
+                        for y in range((start_y - onion_layer), (start_y + onion_layer + 1)):
+                            next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                                      x, y,  x_tile_count, y_tile_count, BEST_FIT, frame)
+                        # south side of onion
+                        y = start_y + onion_layer
+                        for x in range((start_x - onion_layer), (start_x + onion_layer)):
+                            next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                                      x, y,  x_tile_count, y_tile_count, BEST_FIT, frame)
+                        # west side of onion
+                        x = start_x - onion_layer
+                        for y in range((start_y - onion_layer), (start_y + onion_layer)):
+                            next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                                      x, y,  x_tile_count, y_tile_count, BEST_FIT, frame)
+                    else:
+                        next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
+                                  start_x, start_y,  x_tile_count, y_tile_count, BEST_FIT, frame)
+                    onion_layer += 1
+                current_start_square += 1
+
+            # render rest of image left to right and top to bottom
             for y in range(MOSAIC.y_tile_count):
                 for x in range(MOSAIC.x_tile_count):
-                    next_tile(MOSAIC, tile_fitter, progress, original_img2_small,
-                        x, y,  x_tile_count, y_tile_count, BEST_FIT)
-
-        # render defined start squares first
-        current_start_square = 0
-        while current_start_square < START_SQUARES:
-            # square onion layer (mayber circular someday...)
-            onion_layer = 0
-            start_x = START_SQUARES_ARRAY[current_start_square][0]
-            start_y = START_SQUARES_ARRAY[current_start_square][1]
-            onion_layers = START_SQUARES_ARRAY[current_start_square][2]
-            while onion_layer <= onion_layers:
-                if onion_layer > 0:
-                    # north side of onion
-                    y = start_y - onion_layer
-                    for x in range((start_x - onion_layer), (start_x + onion_layer)):
-                        next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
-                                  x, y, x_tile_count, y_tile_count, BEST_FIT)
-                    # east side of onion
-                    x = start_x + onion_layer
-                    for y in range((start_y - onion_layer), (start_y + onion_layer + 1)):
-                        next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
-                                  x, y,  x_tile_count, y_tile_count, BEST_FIT)
-                    # south side of onion
-                    y = start_y + onion_layer
-                    for x in range((start_x - onion_layer), (start_x + onion_layer)):
-                        next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
-                                  x, y,  x_tile_count, y_tile_count, BEST_FIT)
-                    # west side of onion
-                    x = start_x - onion_layer
-                    for y in range((start_y - onion_layer), (start_y + onion_layer)):
-                        next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
-                                  x, y,  x_tile_count, y_tile_count, BEST_FIT)
-                else:
                     next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
-                              start_x, start_y,  x_tile_count, y_tile_count, BEST_FIT)
-                onion_layer += 1
-            current_start_square += 1
+                              x, y,  x_tile_count, y_tile_count, FINAL_FIT, frame)
 
-         # render rest of image left to right and top to bottom
-        for y in range(MOSAIC.y_tile_count):
-            for x in range(MOSAIC.x_tile_count):
-                next_tile(MOSAIC, tile_fitter, progress, original_img1_small,
-                          x, y,  x_tile_count, y_tile_count, FINAL_FIT)
+            MOSAIC.save(OUT_FILE+str(frame)+'.jpg')
+            # print('\nframe, output is in', OUT_FILE+str(FRAME)+'.jpg')
+            frame = frame + 1
 
     except KeyboardInterrupt:
         print('\nHalting, please wait...')
         pass
 
-    MOSAIC.save(OUT_FILE)
-    print('\nFinished, output is in', OUT_FILE)
 
-def next_tile(MOSAIC, tile_fitter, progress, original_img_small, x, y, x_tile_count, y_tile_count, fit_mode):
+def next_tile(MOSAIC, tile_fitter, progress, original_img_small, x, y, x_tile_count, y_tile_count, fit_mode, frame):
     if  x >= 0 and x < x_tile_count:
         if y >= 0 and y < y_tile_count:
             large_box = (x * TILE_SIZE, y * TILE_SIZE, (x + 1)
@@ -372,7 +379,7 @@ def next_tile(MOSAIC, tile_fitter, progress, original_img_small, x, y, x_tile_co
                         (x + 1) * TILE_SIZE/TILE_BLOCK_SIZE, (y + 1) * TILE_SIZE/TILE_BLOCK_SIZE)
             img_data = list(original_img_small.crop(small_box).getdata())
             fit_tiles(MOSAIC, tile_fitter, img_data, large_box, x, y, fit_mode)
-            progress.update()
+            progress.update(frame)
 
 def mosaic(img1_path, img2_path, tiles_path):
     TILES_DIRECTORY = tiles_path
