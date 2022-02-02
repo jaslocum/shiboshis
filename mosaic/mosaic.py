@@ -15,8 +15,8 @@ ENLARGEMENT = 16
 # percentage of all potential tiles to sample per each get_best_fit_tile attempt
 BEST_FIT_TILE_SAMPLE_PERCENT = .2
 FINAL_FIT_TILE_SAMPLE_PERCENT = .1
-# surprise stop percentage chance
-SURPRISE_STOP = 0
+# percent chance of tile changing between frames (0 to 100)
+CHANGE_CHANCE = 25
 # starting point in tile array
 # grid of 80 * 125 = 10,000 (poster)
 # grid of 100 * 100 = 10,000 (square)
@@ -145,15 +145,15 @@ class TileFitter:
         self.tiles_used = tiles_used
         self.tiles_data = tiles_data
 
-    def __lock_tile(self, tile_index):
+    def __lock_tile(self, tile_index, x, y):
         locked_tile = False
-        if self.tiles_used[tile_index] == 1:
-            self.tiles_used[tile_index] = 0
+        if self.tiles_used[tile_index] == [-1, -1]:
+            self.tiles_used[tile_index] = [x, y]
             locked_tile = True
         return locked_tile
 
     def __unlock_tile(self, tile_index):
-        self.tiles_used[tile_index] = 1
+        self.tiles_used[tile_index] = [-1, -1]
 
     def __get_tile_diff(self, t1, t2, bail_out_value):
         diff = 0
@@ -166,7 +166,7 @@ class TileFitter:
                 return diff
         return diff
 
-    def get_best_fit_tile(self, img_data, fit_mode):
+    def get_best_fit_tile(self, img_data, fit_mode, x, y):
         best_fit_tile_index = None
         min_diff = sys.maxsize
         tile_index = 0
@@ -188,10 +188,8 @@ class TileFitter:
         # if we are at the end of remaining tiles, the return best fit so far          
         while trys < max_tries:
             tile_index = random.randint(0, len_tiles_data - 1)
-            if random.random() < SURPRISE_STOP:
-                trys = max_tries
             # lock tile if not already locked
-            if self.__lock_tile(tile_index):
+            if self.__lock_tile(tile_index, x, y):
                 tile_data = self.tiles_data[tile_index]
                 diff = self.__get_tile_diff(img_data, tile_data, min_diff)
                 if diff < min_diff:
@@ -208,7 +206,7 @@ class TileFitter:
             tile_index = 0
             while tile_index < len_tiles_data:
                 # lock tile if not already locked
-                if self.__lock_tile(tile_index):
+                if self.__lock_tile(tile_index, x, y):
                     tile_data = self.tiles_data[tile_index]
                     diff = self.__get_tile_diff(img_data, tile_data, min_diff)
                     if diff < min_diff:
@@ -256,6 +254,10 @@ class MosaicImage:
         self.tiles_assigned = [[1 for y in range(self.y_tile_count)] for x in range(self.x_tile_count)]
         self.initialized = True
 
+    def reset_tile_assigned(self, x, y):
+        self.tiles_assigned[x][y] = 1
+        return True
+
     def set_tile_assigned(self, x, y):
         self.tiles_assigned[x][y] = 0
         return True
@@ -280,7 +282,7 @@ def fit_tiles(mosaic, tile_fitter, img_data, img_coords, x, y, fit_mode):
     # img_data, img_coords, x, y, fit_mode
     if not mosaic.get_tile_assigned(x, y):
         if not img_data_is_empty(img_data):
-            tile_index = tile_fitter.get_best_fit_tile(img_data, fit_mode)
+            tile_index = tile_fitter.get_best_fit_tile(img_data, fit_mode, x, y)
             if tile_index != None:
                 mosaic.set_tile_assigned(x, y)
                 build_mosaic(mosaic, tile_fitter, img_coords, tile_index)
@@ -304,7 +306,7 @@ def compose(original1_img, oringinal2_img, tiles):
     x_tile_count = MOSAIC.x_tile_count
     y_tile_count = MOSAIC.y_tile_count
     TILES_DATA = [list(tile.getdata()) for tile in tiles_large]
-    TILES_USED = list([1 for tile in tiles_large])
+    TILES_USED = list([[-1, -1] for tile in tiles_large])
     tile_fitter = TileFitter(TILES_DATA, TILES_USED)
     try:
         progress = ProgressCounter(MOSAIC.x_tile_count * MOSAIC.y_tile_count * 2 * MAX_FRAMES)
@@ -364,11 +366,21 @@ def compose(original1_img, oringinal2_img, tiles):
             MOSAIC.save(OUT_FILE+str(frame)+'.jpg')
             # print('\nframe, output is in', OUT_FILE+str(FRAME)+'.jpg')
             frame = frame + 1
+            release_tiles_used(TILES_USED, MOSAIC)
 
     except KeyboardInterrupt:
         print('\nHalting, please wait...')
         pass
 
+def release_tiles_used(TILES_USED, MOSAIC):
+    tile_index = 0
+    for y in range(MOSAIC.y_tile_count):
+        for x in range(MOSAIC.x_tile_count):
+            if random.randint(0, 100) < CHANGE_CHANCE and tile_index < len(TILES_USED):
+                MOSAIC.reset_tile_assigned(
+                    TILES_USED[tile_index][0], TILES_USED[tile_index][1])
+                TILES_USED[tile_index] = [-1, -1]
+            tile_index += 1    
 
 def next_tile(MOSAIC, tile_fitter, progress, original_img_small, x, y, x_tile_count, y_tile_count, fit_mode, frame):
     if  x >= 0 and x < x_tile_count:
