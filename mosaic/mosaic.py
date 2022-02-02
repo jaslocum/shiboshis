@@ -291,14 +291,25 @@ def build_mosaic(mosaic, tile_fitter, img_coords, tile_index):
     tile_data = tile_fitter.tiles_data[tile_index]
     mosaic.add_tile(tile_data, img_coords)
 
-def compose(original1_img, oringinal2_img, tiles):
+def compose(original1_img, oringinal2_img, oringinal3_img, oringinal4_img, tiles):
     print('compose: press Ctrl-C to abort...')
+    render_first_image_small = None
     original_img1_large, original_img1_small = original1_img
     if oringinal2_img == None:
         original_img2_large = None
         original_img2_small = None
     else:
         original_img2_large, original_img2_small = oringinal2_img
+    if oringinal3_img == None:
+        original_img3_large = None
+        original_img3_small = None
+    else:
+        original_img3_large, original_img3_small = oringinal3_img
+    if oringinal4_img == None:
+        original_img4_large = None
+        original_img4_small = None
+    else:
+        original_img4_large, original_img4_small = oringinal4_img
     tiles_large, tiles_small = tiles
 
     frame = 0
@@ -314,8 +325,19 @@ def compose(original1_img, oringinal2_img, tiles):
         # generate MAX_FRAMES frames
         while frame < MAX_FRAMES:
 
-            # render rest of image left to right and top to bottom
-            if original_img2_small != None:
+            if frame > 0:
+                # render rest of image left to right and top to bottom
+                if original_img4_small != None:
+                    render_first_image_small = original_img4_small
+                else:
+                    if original_img2_small != None:
+                        render_first_image_small = original_img2_small
+            else:
+                # render rest of image left to right and top to bottom
+                if original_img2_small != None:
+                    render_first_image_small = original_img2_small
+                
+            if render_first_image_small != None:
                 for y in range(MOSAIC.y_tile_count):
                     for x in range(MOSAIC.x_tile_count):
                         next_tile(MOSAIC, tile_fitter, progress, original_img2_small,
@@ -393,19 +415,32 @@ def next_tile(MOSAIC, tile_fitter, progress, original_img_small, x, y, x_tile_co
             fit_tiles(MOSAIC, tile_fitter, img_data, large_box, x, y, fit_mode)
             progress.update(frame)
 
-def mosaic(img1_path, img2_path, tiles_path):
+def mosaic(img1_path, img2_path, img3_path, img4_path, tiles_path):
     TILES_DIRECTORY = tiles_path
     image1_data = TargetImage1(img1_path).get_data()
     if img2_path == None:
         image2_data = None
     else:
         image2_data = TargetImage2(img2_path).get_data()
+    if img3_path == None:
+        image3_data = None
+    else:
+        image3_data = TargetImage2(img2_path).get_data()
+    if img4_path == None:
+        image4_data = None
+    else:
+        image4_data = TargetImage2(img2_path).get_data()
     data_tiles = TileProcessor().get_tiles(TILES_DIRECTORY)
-    compose(image1_data, image2_data, data_tiles)
+    compose(image1_data, image2_data, image3_data, image4_data, data_tiles)
 
 if __name__ == '__main__':
     freeze_support()
-    if len(sys.argv) == 4:
-        mosaic(sys.argv[1], sys.argv[2], sys.argv[3])
+    if len(sys.argv) == 6:
+        mosaic(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5])
     else:
-        mosaic(sys.argv[1], None, sys.argv[2])
+        if len(sys.argv) == 5:
+            mosaic(sys.argv[1], sys.argv[2], sys.argv[3], None, sys.argv[4])
+            if len(sys.argv) == 4:
+                mosaic(sys.argv[1], sys.argv[2], None, None, sys.argv[4])
+            else:
+                mosaic(sys.argv[1], None, None, None, sys.argv[2])
