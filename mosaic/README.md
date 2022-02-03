@@ -12,3 +12,5 @@ Run the utility from the command line, as follows:
 *   The `tiles directory` argument should contain the path to the directory containing the tile images (the directory will be searched recursively, so it doesn't matter if some of the images are contained in sub-directories)
 
 Multi processing has been removed from original code for simplicity
+
+Happy Valentine's season #ShibArmy, and much love to our shiboshi community.  This is my final #Shiboshi #mosaic in a three part series. All 10K OG Shiboshis occur once in this mosaic. I think it looks pretty cool at a distance, or you can zoom in to make out each individual shiboshi.
